@@ -9,15 +9,15 @@ from datetime import datetime
 # CONFIGURATION
 # -------------------------------
 st.set_page_config(page_title="Pizza Sales Report", layout="wide")
-st.title("🍕 Pizza Sales Report Dashboard")
+st.title("🍕 Pizza pulse Dashboard")
 
 # -------------------------------
-# LOAD DATA
+# LOAD DATA FROM UPLOADED FILE
 # -------------------------------
 @st.cache_data
 
-def load_data():
-    df = pd.read_csv("pizza_sales.csv")
+def load_data(uploaded_file):
+    df = pd.read_csv(uploaded_file)
     df["order_date"] = pd.to_datetime(df["order_date"])
     df["order_time"] = pd.to_datetime(df["order_time"], format="%H:%M:%S").dt.time
     df["hour"] = pd.to_datetime(df["order_time"], format="%H:%M:%S").dt.hour
@@ -28,12 +28,17 @@ def load_data():
     df["quarter"] = df["order_date"].dt.quarter
     return df
 
-df = load_data()
+uploaded_file = st.sidebar.file_uploader("📤 Upload your pizza_sales CSV file", type="csv")
+if uploaded_file is not None:
+    df = load_data(uploaded_file)
+else:
+    st.warning("Please upload a CSV file to begin analysis.")
+    st.stop()
 
 # -------------------------------
 # TABS: INTERFACES
 # -------------------------------
-tabs = st.tabs(["Overview", "Trends", "Category & Size", "Best/Worst Pizzas", "Insights"])
+tabs = st.tabs(["Overview", "Trends", "Category & Size", "Best/Worst Pizzas", "Insights", "Yearly Comparison"])
 
 # Shared filters
 with st.sidebar:
@@ -146,10 +151,35 @@ with tabs[4]:
     """)
 
 # -------------------------------
+# TAB 6: YEARLY COMPARISON
+# -------------------------------
+with tabs[5]:
+    st.subheader("📊 Yearly Comparison")
+    year_revenue = df.groupby("year")["total_price"].sum().reset_index()
+    year_orders = df.groupby("year")["order_id"].nunique().reset_index()
+
+    st.altair_chart(
+        alt.Chart(year_revenue).mark_bar(color="#8e44ad").encode(
+            x=alt.X("year:O", title="Year"),
+            y=alt.Y("total_price:Q", title="Total Revenue")
+        ).properties(title="Year-wise Revenue Comparison"),
+        use_container_width=True
+    )
+
+    st.altair_chart(
+        alt.Chart(year_orders).mark_line(color="#c0392b").encode(
+            x=alt.X("year:O", title="Year"),
+            y=alt.Y("order_id:Q", title="Total Orders")
+        ).properties(title="Year-wise Orders Comparison"),
+        use_container_width=True
+    )
+
+# -------------------------------
 # FOOTER
 # -------------------------------
 st.markdown("---")
-st.caption("PizzaPulse • Built with ❤️ using Streamlit | Data Source: Maven Pizza Challenge")
+st.caption("PizzaPulse • Built with ❤️ using Streamlit | Upload your own data to compare across years")
+
 
 
 

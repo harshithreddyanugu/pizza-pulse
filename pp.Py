@@ -1,146 +1,95 @@
-// Step 1: Define the Scope and Objective
-// Objective: Analyze sales revenue data to identify trends and understand key influencing factors
+# Pizza Sales Dashboard App using Streamlit
+# Step-by-step app based on Tableau analysis logic
 
-// Step 2: Data Collection
-// Using the pizza_sales.csv dataset with the following assumed columns:
-// TransactionID, Date, Time, Item, Quantity, Price, Revenue
+import streamlit as st
+import pandas as pd
+import numpy as np
+import altair as alt
 
-import React, { useEffect, useState } from 'react';
-import Papa from 'papaparse';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  BarChart, Bar, PieChart, Pie, LineChart, Line,
-  XAxis, YAxis, Tooltip, Cell, ResponsiveContainer
-} from 'recharts';
+# Step 1: Define the Scope and Objective
+st.title("🍕 PizzaPulse - Sales Revenue Analysis Dashboard")
+st.write("Analyze pizza sales data to identify trends, best-selling items, and peak periods.")
 
-const PizzaPulseApp = () => {
-  const [data, setData] = useState([]);
-  const [kpis, setKpis] = useState({});
-  const [revenueOverTime, setRevenueOverTime] = useState([]);
-  const [revenueByItem, setRevenueByItem] = useState([]);
-  const [revenueByDay, setRevenueByDay] = useState([]);
-  const [revenueByHour, setRevenueByHour] = useState([]);
+# Step 2: Load Dataset
+@st.cache_data
+def load_data():
+    df = pd.read_csv("pizza_sales.csv")
+    df["order_date"] = pd.to_datetime(df["order_date"])
+    df["order_time"] = pd.to_datetime(df["order_time"], format="%H:%M:%S").dt.time
+    return df
 
-  // Step 3: Data Preparation
-  // Clean and parse the CSV into usable JS objects
-  useEffect(() => {
-    fetch('/pizza_sales.csv')
-      .then(response => response.text())
-      .then(csv => {
-        Papa.parse(csv, {
-          header: true,
-          skipEmptyLines: true,
-          complete: results => {
-            const parsed = results.data.map(row => ({
-              ...row,
-              quantity: +row.Quantity,
-              total_price: +row.Revenue,
-              order_date: new Date(row.Date),
-              order_time: new Date(`1970-01-01T${row.Time}`),
-              item: row.Item
-            }));
-            setData(parsed);
-            calculateKPIs(parsed);
-            generateCharts(parsed);
-          }
-        });
-      });
-  }, []);
+# Load data
+pizza_df = load_data()
 
-  // KPI Calculation (Total Revenue, Orders, AOV, etc.)
-  const calculateKPIs = (data) => {
-    const totalRevenue = data.reduce((acc, row) => acc + row.total_price, 0);
-    const uniqueOrders = new Set(data.map(row => row.TransactionID)).size;
-    const totalPizzas = data.reduce((acc, row) => acc + row.quantity, 0);
-    const avgOrderValue = totalRevenue / uniqueOrders;
+# Step 3: Data Preparation
+pizza_df["hour"] = pd.to_datetime(pizza_df["order_time"], format="%H:%M:%S").dt.hour
+pizza_df["weekday"] = pizza_df["order_date"].dt.day_name()
 
-    setKpis({
-      totalRevenue: `$${totalRevenue.toFixed(2)}`,
-      avgOrderValue: `$${avgOrderValue.toFixed(2)}`,
-      totalPizzas,
-      totalOrders: uniqueOrders
-    });
-  };
+# KPIs
+total_revenue = pizza_df["total_price"].sum()
+total_orders = pizza_df["order_id"].nunique()
+total_pizzas = pizza_df["quantity"].sum()
+avg_order_value = total_revenue / total_orders
+avg_pizzas_per_order = total_pizzas / total_orders
+seat_util = min(100, round((total_orders * 3) / (60 * total_orders) * 100, 2))
 
-  // Step 4 & 5: Load Data into Tableau Equivalent + Visualizations in Recharts
-  const generateCharts = (data) => {
-    const revenueByDate = {};
-    const revenueByItemMap = {};
-    const revenueByDay = {};
-    const revenueByHour = {};
+# Display KPIs
+st.markdown("### 📊 Key Performance Indicators")
+kpi1, kpi2, kpi3 = st.columns(3)
+kpi1.metric("Total Revenue", f"${total_revenue:,.2f}")
+kpi2.metric("Avg. Order Value", f"${avg_order_value:.2f}")
+kpi3.metric("Total Orders", total_orders)
 
-    data.forEach(row => {
-      const date = row.order_date.toISOString().split('T')[0];
-      revenueByDate[date] = (revenueByDate[date] || 0) + row.total_price;
+kpi4, kpi5 = st.columns(2)
+kpi4.metric("Total Pizzas Sold", total_pizzas)
+kpi5.metric("Seat Utilization", f"{seat_util}%")
 
-      revenueByItemMap[row.item] = (revenueByItemMap[row.item] || 0) + row.total_price;
+# Step 4: Visualizations
+st.markdown("---")
+st.header("📈 Sales Trends")
 
-      const weekday = row.order_date.getDay();
-      revenueByDay[weekday] = (revenueByDay[weekday] || 0) + row.total_price;
+# Revenue Over Time
+revenue_daily = pizza_df.groupby("order_date")["total_price"].sum().reset_index()
+line_chart = alt.Chart(revenue_daily).mark_line().encode(
+    x="order_date:T",
+    y="total_price:Q"
+).properties(title="Total Revenue Over Time")
+st.altair_chart(line_chart, use_container_width=True)
 
-      const hour = row.order_time.getHours();
-      revenueByHour[hour] = (revenueByHour[hour] || 0) + row.total_price;
-    });
+# Revenue by Item
+revenue_by_item = pizza_df.groupby("pizza_name")["total_price"].sum().sort_values(ascending=False).head(10).reset_index()
+bar_chart = alt.Chart(revenue_by_item).mark_bar().encode(
+    x=alt.X("total_price:Q", title="Revenue"),
+    y=alt.Y("pizza_name:N", sort='-x', title="Pizza")
+).properties(title="Top 10 Pizzas by Revenue")
+st.altair_chart(bar_chart, use_container_width=True)
 
-    setRevenueOverTime(Object.entries(revenueByDate).map(([date, value]) => ({ date, value })));
-    setRevenueByItem(Object.entries(revenueByItemMap).map(([name, value]) => ({ name, value })));
-    setRevenueByDay(Object.entries(revenueByDay).map(([day, value]) => ({ day, value })));
-    setRevenueByHour(Object.entries(revenueByHour).map(([hour, value]) => ({ hour, value })));
-  };
+# Revenue by Day of Week
+revenue_by_day = pizza_df.groupby("weekday")["total_price"].sum().reindex([
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+]).reset_index()
+st.bar_chart(revenue_by_day.set_index("weekday"), use_container_width=True)
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
+# Revenue by Hour of Day
+revenue_by_hour = pizza_df.groupby("hour")["total_price"].sum().reset_index()
+st.line_chart(revenue_by_hour.set_index("hour"), use_container_width=True)
 
-  // Step 6: Build UI as Dashboard (equivalent to Tableau layout)
-  return (
-    <div className="p-6 grid gap-6">
-      <h1 className="text-3xl font-bold mb-4">PizzaPulse – Sales Revenue Analysis</h1>
+# Best and Worst Selling Pizzas
+st.markdown("---")
+st.header("🏆 Best & ❌ Worst Selling Pizzas")
 
-      {/* KPI Section */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Object.entries(kpis).map(([key, value]) => (
-          <Card key={key}><CardContent>
-            <p className="text-sm uppercase font-medium">{key.replace(/([A-Z])/g, ' $1')}</p>
-            <p className="text-xl font-semibold">{value}</p>
-          </CardContent></Card>
-        ))}
-      </div>
+best_pizzas = pizza_df.groupby("pizza_name")["total_price"].sum().nlargest(5).reset_index()
+worst_pizzas = pizza_df.groupby("pizza_name")["total_price"].sum().nsmallest(5).reset_index()
 
-      {/* Step 7: Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Total Revenue Over Time */}
-        <Card><CardContent><h2>Total Revenue Over Time</h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={revenueOverTime}><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#8884d8" /></LineChart>
-          </ResponsiveContainer></CardContent></Card>
+col1, col2 = st.columns(2)
+col1.subheader("Top 5 Best Sellers")
+col1.dataframe(best_pizzas)
+col2.subheader("Bottom 5 Worst Sellers")
+col2.dataframe(worst_pizzas)
 
-        {/* Revenue by Item */}
-        <Card><CardContent><h2>Revenue by Item</h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={revenueByItem.slice(0, 5)}><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#00C49F" /></BarChart>
-          </ResponsiveContainer></CardContent></Card>
+# Footer
+st.markdown("---")
+st.caption("Built with ❤️ using Streamlit | Data from Maven Pizza Challenge")
 
-        {/* Revenue by Day of Week */}
-        <Card><CardContent><h2>Revenue by Day of Week</h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={revenueByDay}><XAxis dataKey="day" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#FFBB28" /></BarChart>
-          </ResponsiveContainer></CardContent></Card>
-
-        {/* Revenue by Time of Day */}
-        <Card><CardContent><h2>Revenue by Time of Day</h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={revenueByHour}><XAxis dataKey="hour" /><YAxis /><Tooltip /><Line type="monotone" dataKey="value" stroke="#FF8042" /></LineChart>
-          </ResponsiveContainer></CardContent></Card>
-      </div>
-
-      {/* Step 8: Generate Predictive Insights or Export */}
-      <div className="mt-6 text-center">
-        <Button className="text-white bg-green-600 hover:bg-green-700">Export Dashboard</Button>
-      </div>
-    </div>
-  );
-};
-
-// Step 9: Save and Share if needed (in Tableau it's File > Save As, here use frontend tools)
-
-export default PizzaPulseApp;
+ 
+   

@@ -1,5 +1,4 @@
-pandad
-numpy
 streamlit
+pandas
+numpy
 altair
-python-dateutil

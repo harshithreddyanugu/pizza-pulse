@@ -1,0 +1,5 @@
+pandad
+numpy
+streamlit
+altair
+python-dateutil
